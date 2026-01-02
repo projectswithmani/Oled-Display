@@ -1,0 +1,114 @@
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+/* ============ OLED (FIXED) ============ */
+#define OLED_DC   D2
+#define OLED_CS   D8
+#define OLED_RST  D1
+
+/* ============ BUZZER ============ */
+#define BUZZER  D3
+
+#define W 128
+#define H 64
+
+Adafruit_SSD1306 display(W, H, &SPI, OLED_DC, OLED_RST, OLED_CS);
+
+/* ============ BARS ============ */
+#define BAR_COUNT 30
+#define BAR_WIDTH (W / BAR_COUNT)
+#define MIN_H 6
+#define MAX_H 60
+
+int bars[BAR_COUNT];
+bool calibrated = false;
+
+/* ============ DRAW BARS ============ */
+void drawBars() {
+  display.clearDisplay();
+
+  for (int i = 0; i < BAR_COUNT; i++) {
+    int x = i * BAR_WIDTH;
+    int y = H - bars[i];
+
+    display.fillRect(
+      x + 1,
+      y,
+      BAR_WIDTH - 2,
+      bars[i],
+      SSD1306_WHITE
+    );
+  }
+  display.display();
+}
+
+/* ============ CALIBRATION TEXT ============ */
+void showCalibrationText() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(20, 28);
+  display.print("CALIBRATION...");
+  display.display();
+
+  // Audible indication
+  tone(BUZZER, 1200);
+  delay(500);
+  noTone(BUZZER);
+}
+
+/* ============ ANIMATED SORT (BUBBLE SORT) ============ */
+void animatedSortAscending() {
+  for (int i = 0; i < BAR_COUNT - 1; i++) {
+    for (int j = 0; j < BAR_COUNT - i - 1; j++) {
+
+      if (bars[j] > bars[j + 1]) {
+        int temp = bars[j];
+        bars[j] = bars[j + 1];
+        bars[j + 1] = temp;
+
+        drawBars();
+
+        tone(BUZZER, 800, 15);   // short tick per swap
+        delay(90);               // animation speed
+        noTone(BUZZER);
+      }
+    }
+  }
+}
+
+/* ============ SETUP ============ */
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUZZER, OUTPUT);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC)) {
+    while (1);
+  }
+
+  randomSeed(analogRead(A0));
+
+  // Generate FIXED bar weights ONCE
+  for (int i = 0; i < BAR_COUNT; i++) {
+    bars[i] = random(MIN_H, MAX_H);
+    Serial.print("Bar ");
+    Serial.print(i);
+    Serial.print(" = ");
+    Serial.println(bars[i]);
+  }
+
+  drawBars();
+
+  delay(3000);               // small pause before calibration
+  showCalibrationText();
+  animatedSortAscending();
+
+  calibrated = true;
+  Serial.println("Calibration Completed");
+}
+
+/* ============ LOOP ============ */
+void loop() {
+  // Nothing here – fully automated
+}
