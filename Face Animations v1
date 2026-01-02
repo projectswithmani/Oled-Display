@@ -1,0 +1,289 @@
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+/* ============ OLED PINS (FIXED) ============ */
+#define OLED_DC   D2
+#define OLED_CS   D8
+#define OLED_RST  D1
+
+/* ============ BUTTON ============ */
+#define BTN D3   // GPIO0, pullup
+
+#define W 128
+#define H 64
+
+Adafruit_SSD1306 display(W, H, &SPI, OLED_DC, OLED_RST, OLED_CS);
+
+/* ============ FACE GEOMETRY ============ */
+#define EYE_W 28
+#define EYE_H 18
+#define PUPIL 6
+
+#define LE_X 18
+#define RE_X 82
+#define EYE_Y 14
+#define MOUTH_Y 48
+
+int faceIndex = 0;
+unsigned long lastPress = 0;
+const int TOTAL_FACES = 16;
+
+/* ============ BASIC DRAW ============ */
+void clr() { display.clearDisplay(); }
+void show() { display.display(); }
+
+void eye(int x, int y, int lid, int px, int py) {
+  display.drawRoundRect(x, y + lid, EYE_W, EYE_H - lid, 6, SSD1306_WHITE);
+  display.fillCircle(x + EYE_W/2 + px, y + EYE_H/2 + py + lid, PUPIL, SSD1306_WHITE);
+}
+
+void mouthLine(int y) {
+  display.drawLine(48, y, 80, y, SSD1306_WHITE);
+}
+
+void mouthSmile(int lift) {
+  display.drawCircle(56, MOUTH_Y - lift, 8, SSD1306_WHITE);
+  display.drawCircle(72, MOUTH_Y - lift, 8, SSD1306_WHITE);
+  display.drawLine(56, MOUTH_Y - lift, 72, MOUTH_Y - lift, SSD1306_WHITE);
+}
+
+void mouthO(int r) {
+  display.drawCircle(64, MOUTH_Y, r, SSD1306_WHITE);
+}
+
+/* ============ ANIMATED EXPRESSIONS ============ */
+
+// 0 Idle (breathing + eye drift)
+void animIdle() {
+  for (int i = -2; i <= 2; i++) {
+    clr();
+    eye(LE_X, EYE_Y, 0, i, 0);
+    eye(RE_X, EYE_Y, 0, i, 0);
+    mouthLine(MOUTH_Y + (i % 2));
+    show();
+    delay(120);
+  }
+}
+
+// 1 Blink (realistic)
+void animBlink() {
+  for (int lid = 0; lid <= 12; lid += 3) {
+    clr();
+    eye(LE_X, EYE_Y, lid, 0, 0);
+    eye(RE_X, EYE_Y, lid, 0, 0);
+    show();
+    delay(35);
+  }
+  for (int lid = 12; lid >= 0; lid -= 3) {
+    clr();
+    eye(LE_X, EYE_Y, lid, 0, 0);
+    eye(RE_X, EYE_Y, lid, 0, 0);
+    show();
+    delay(45);
+  }
+}
+
+// 2 Happy (bounce)
+void animHappy() {
+  for (int i = 0; i < 3; i++) {
+    clr();
+    eye(LE_X, EYE_Y + 3, 6, 0, -2);
+    eye(RE_X, EYE_Y + 3, 6, 0, -2);
+    mouthSmile(i);
+    show();
+    delay(180);
+  }
+}
+
+// 3 Thinking (eye scan)
+void animThinking() {
+  for (int i = -3; i <= 3; i += 2) {
+    clr();
+    eye(LE_X, EYE_Y, 0, i, -2);
+    eye(RE_X, EYE_Y, 0, i, -2);
+    mouthLine(MOUTH_Y);
+    show();
+    delay(180);
+  }
+}
+
+// 4 Surprised (pulse)
+void animSurprised() {
+  for (int r = 4; r <= 7; r++) {
+    clr();
+    eye(LE_X, EYE_Y, 0, 0, 0);
+    eye(RE_X, EYE_Y, 0, 0, 0);
+    mouthO(r);
+    show();
+    delay(120);
+  }
+}
+
+// 5 Sleepy (slow blink)
+void animSleepy() {
+  for (int lid = 6; lid <= 14; lid += 2) {
+    clr();
+    eye(LE_X, EYE_Y, lid, 0, 0);
+    eye(RE_X, EYE_Y, lid, 0, 0);
+    mouthLine(MOUTH_Y + 2);
+    show();
+    delay(200);
+  }
+}
+
+// 6 Angry (shake)
+void animAngry() {
+  for (int i = -2; i <= 2; i++) {
+    clr();
+    eye(LE_X + i, EYE_Y, 0, 0, 0);
+    eye(RE_X + i, EYE_Y, 0, 0, 0);
+    mouthLine(MOUTH_Y);
+    show();
+    delay(80);
+  }
+}
+
+// 7 Sad (droop)
+void animSad() {
+  for (int i = 0; i < 3; i++) {
+    clr();
+    eye(LE_X, EYE_Y + i + 4, 6, 0, 2);
+    eye(RE_X, EYE_Y + i + 4, 6, 0, 2);
+    mouthLine(MOUTH_Y + 3);
+    show();
+    delay(200);
+  }
+}
+
+// 8 Love (pulse)
+void animLove() {
+  for (int i = 4; i <= 6; i++) {
+    clr();
+    display.fillCircle(LE_X + 10, EYE_Y + 8, i, SSD1306_WHITE);
+    display.fillCircle(RE_X + 10, EYE_Y + 8, i, SSD1306_WHITE);
+    mouthSmile(0);
+    show();
+    delay(150);
+  }
+}
+
+// 9 Excited (jump)
+void animExcited() {
+  for (int i = 0; i < 3; i++) {
+    clr();
+    eye(LE_X, EYE_Y - 3, 0, 0, -2);
+    eye(RE_X, EYE_Y - 3, 0, 0, -2);
+    mouthO(6);
+    show();
+    delay(120);
+  }
+}
+
+// 10 Confused (cross look)
+void animConfused() {
+  for (int i = -3; i <= 3; i += 3) {
+    clr();
+    eye(LE_X, EYE_Y, 0, i, 0);
+    eye(RE_X, EYE_Y, 0, -i, 0);
+    mouthLine(MOUTH_Y);
+    show();
+    delay(200);
+  }
+}
+
+// 11 Focused (steady)
+void animFocused() {
+  clr();
+  eye(LE_X, EYE_Y, 0, 0, 0);
+  eye(RE_X, EYE_Y, 0, 0, 0);
+  display.drawRect(52, MOUTH_Y - 4, 24, 6, SSD1306_WHITE);
+  show();
+  delay(600);
+}
+
+// 12 Naughty (wink loop)
+void animNaughty() {
+  clr();
+  display.drawLine(LE_X, EYE_Y + EYE_H/2, LE_X + EYE_W, EYE_Y + EYE_H/2, SSD1306_WHITE);
+  eye(RE_X, EYE_Y, 0, 3, 0);
+  mouthSmile(0);
+  show();
+  delay(600);
+}
+
+// 13 Crying (tear drop)
+void animCrying() {
+  for (int y = 0; y < 8; y += 2) {
+    clr();
+    eye(LE_X, EYE_Y + 5, 6, 0, 3);
+    eye(RE_X, EYE_Y + 5, 6, 0, 3);
+    display.drawLine(LE_X + 14, EYE_Y + 18, LE_X + 14, EYE_Y + 18 + y, SSD1306_WHITE);
+    show();
+    delay(180);
+  }
+}
+
+// 14 Shocked (freeze)
+void animShocked() {
+  clr();
+  eye(LE_X, EYE_Y, 0, 0, 0);
+  eye(RE_X, EYE_Y, 0, 0, 0);
+  mouthO(8);
+  show();
+  delay(700);
+}
+
+// 15 Dead (X eyes blink)
+void animDead() {
+  clr();
+  display.drawLine(LE_X, EYE_Y, LE_X + EYE_W, EYE_Y + EYE_H, SSD1306_WHITE);
+  display.drawLine(LE_X + EYE_W, EYE_Y, LE_X, EYE_Y + EYE_H, SSD1306_WHITE);
+  display.drawLine(RE_X, EYE_Y, RE_X + EYE_W, EYE_Y + EYE_H, SSD1306_WHITE);
+  display.drawLine(RE_X + EYE_W, EYE_Y, RE_X, EYE_Y + EYE_H, SSD1306_WHITE);
+  show();
+  delay(600);
+}
+
+/* ============ DISPATCH ============ */
+void playFace() {
+  switch (faceIndex) {
+    case 0: animIdle(); break;
+    case 1: animBlink(); break;
+    case 2: animHappy(); break;
+    case 3: animThinking(); break;
+    case 4: animSurprised(); break;
+    case 5: animSleepy(); break;
+    case 6: animAngry(); break;
+    case 7: animSad(); break;
+    case 8: animLove(); break;
+    case 9: animExcited(); break;
+    case 10: animConfused(); break;
+    case 11: animFocused(); break;
+    case 12: animNaughty(); break;
+    case 13: animCrying(); break;
+    case 14: animShocked(); break;
+    case 15: animDead(); break;
+  }
+}
+
+/* ============ SETUP ============ */
+void setup() {
+  Serial.begin(115200);
+  pinMode(BTN, INPUT_PULLUP);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC)) {
+    while (1);
+  }
+}
+
+/* ============ LOOP ============ */
+void loop() {
+  if (digitalRead(BTN) == LOW && millis() - lastPress > 300) {
+    lastPress = millis();
+    faceIndex = (faceIndex + 1) % TOTAL_FACES;
+    Serial.print("Face: ");
+    Serial.println(faceIndex);
+  }
+  playFace();
+}
